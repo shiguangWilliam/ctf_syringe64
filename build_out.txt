@@ -1,0 +1,85 @@
+== minhook ==
+buffer.c
+hook.c
+trampoline.c
+hde32.c
+hde64.c
+正在生成代码...
+== core cpp ==
+syr_core.cpp
+D:\weapon\ctf-syringe64\src\core\syr_core.cpp(253): warning C4996: '_snprintf': This function or variable may be unsafe. Consider using _snprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+== core lib ==
+== tether.dll ==
+tether_main.cpp
+D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(109): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(149): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  正在创建库 D:\weapon\ctf-syringe64\build\syringe-tether.lib 和对象 D:\weapon\ctf-syringe64\build\syringe-tether.exp
+== launcher64 ==
+launcher_main.cpp
+== syrctl ==
+syrctl.cpp
+== puppet64 ==
+puppet_main.cpp
+D:\weapon\ctf-syringe64\test\puppet_main.cpp(45): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  正在创建库 D:\weapon\ctf-syringe64\build\puppet64.lib 和对象 D:\weapon\ctf-syringe64\build\puppet64.exp
+== selftest ==
+selftest.cpp
+  正在创建库 D:\weapon\ctf-syringe64\build\selftest.lib 和对象 D:\weapon\ctf-syringe64\build\selftest.exp
+write_mem                              got=1 want=1 OK
+scan pattern hit                       got=1 want=1 OK
+Add2 unhooked                          got=3 want=3 OK
+arg tamper (b+100)                     got=67 want=67 OK
+skip + return 0x1337                   got=1337 want=1337 OK
+stack arg tamper (e=7)                 got=1B5D want=1B5D OK
+FlowTest unhooked                      got=1B want=1B OK
+arbitrary addr call                    got=CAFE want=CAFE OK
+macro section install (skip 0)         got=1 want=1 OK
+hook remove                            got=0 want=0 OK
+Add2 restored                          got=3 want=3 OK
+re-register => ALREADY                 got=2 want=2 OK
+remove nonexistent => 1                got=1 want=1 OK
+api table version                      got=1 want=1 OK
+api read_mem                           got=1 want=1 OK
+api read_mem bad addr                  got=1 want=1 OK
+api alloc rwx                          got=1 want=1 OK
+api write to alloc                     got=0 want=0 OK
+exec written stub                      got=5678 want=5678 OK
+api alloc rw                           got=ABCD want=ABCD OK
+api protect -> old RWX                 got=1 want=1 OK
+api free (no crash)                    got=1 want=1 OK
+read .text                             got=0 want=0 OK
+write .text roundtrip                  got=0 want=0 OK
+code intact after write                got=1 want=1 OK
+
+SELFTEST PASS (hooks=3)
+build + selftest OK
+puppet: ALT=00007FF7AE8C1010 FLOW=00007FF7AE8C1020 BASE=00007FF7AE8C0000 SECRET=00007FF7AE8C1030 PID=33480 ADD=00007FF7AE8C1000
+rvas: add=+1000 secret=+1030 flow=+1020
+inject OK (remote hmodule=0000000071B40000)
+syringe64 tether v3 pid=33480 bits=64
+.payload_example.cpp
+  正在创建库 D:\weapon\ctf-syringe64\build\e2e_payload.lib 和对象 D:\weapon\ctf-syringe64\build\e2e_payload.exp
+LOAD 3
+.00007FF7AE8C1000 D_PuppetAdd
+00007FF7AE8C1030 D_PuppetSecret
+00007FF7AE8C1020 D_PuppetFlow
+
+.syr: core ready (ver 3, engine=MinHook)
+tether: attached pid=33480
+hook addr=00007FF7AE8C1000 name=D_PuppetAdd OK tramp=00007FF7AE8B0FC0
+hook addr=00007FF7AE8C1030 name=D_PuppetSecret OK tramp=0000000000000000
+hook addr=00007FF7AE8C1020 name=D_PuppetFlow OK tramp=0000000000000000
+section: 3 hook(s) installed for module 00007FFE639F0000
+tether: payload D:\weapon\ctf-syringe64\build\e2e_payload.dll init -> 3
+.add 1 2 -> add=103 (want 103)
+secret 1 -> secret=1337 (want 1337)
+flow 5 -> flow=2468 (want 2468)
+alloc -> 000001c3d0290000
+read back -> DEADBEEF (want DEADBEEF)
+payload_second.cpp
+  正在创建库 D:\weapon\ctf-syringe64\build\e2e_payload2.lib 和对象 D:\weapon\ctf-syringe64\build\e2e_payload2.exp
+second payload hot-load OK (injector untouched)
+FROZEN 1
+.THAWED 1
+.e2e PASS
+e2e OK

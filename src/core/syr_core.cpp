@@ -147,6 +147,34 @@ __declspec(dllexport) int SyrWriteMem(uintptr_t addr, const void* buf, size_t le
   return 0;
 }
 
+// SEH 安全读: 不可读返回 1, 不让 payload 因野指针崩溃。
+static bool SyrSafeRead(uintptr_t addr, void* buf, size_t len) {
+  __try { memcpy(buf, (const void*)addr, len); return true; }
+  __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+__declspec(dllexport) int SyrReadMem(uintptr_t addr, void* buf, size_t len) {
+  return SyrSafeRead(addr, buf, len) ? 0 : 1;
+}
+
+__declspec(dllexport) uintptr_t SyrAllocMem(size_t size, int exec) {
+  DWORD prot = exec ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
+  return (uintptr_t)VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, prot);
+}
+
+__declspec(dllexport) void SyrFreeMem(uintptr_t addr) {
+  if (addr) VirtualFree((void*)addr, 0, MEM_RELEASE);
+}
+
+__declspec(dllexport) uint32_t SyrProtect(uintptr_t addr, size_t len, uint32_t new_prot) {
+  DWORD oldp = 0;
+  if (!VirtualProtect((void*)addr, len, new_prot, &oldp)) return 0;
+  if (new_prot & (PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_READ |
+                  PAGE_EXECUTE_WRITECOPY | PAGE_EXECUTE))
+    FlushInstructionCache(GetCurrentProcess(), (void*)addr, len);
+  return oldp;
+}
+
 // pattern: "48 8B 05 ?? ??"; ?? / * 为通配字节。
 __declspec(dllexport) int SyrScanPattern(const wchar_t* module, const char* pattern,
                                          uintptr_t* out, int max_out) {
@@ -254,6 +282,10 @@ static Api g_api_table = {
     SyrScanPattern,
     SyrInstallSection,
     syr_api_log,
+    SyrReadMem,
+    SyrAllocMem,
+    SyrFreeMem,
+    SyrProtect,
 };
 
 extern "C" __declspec(dllexport) const Api* SyrGetApi(void) { return &g_api_table; }

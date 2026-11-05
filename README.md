@@ -37,6 +37,8 @@ build\syrctl.exe <pid> scan GameAssembly.dll "48 89 5C 24 ?? 57"
 build\syrctl.exe <pid> load D:\ctf\payload.dll
 build\syrctl.exe <pid> hooks
 build\syrctl.exe <pid> log
+build\syrctl.exe <pid> alloc 4096 1     # RWX 页, 返回地址
+build\syrctl.exe <pid> free <addr>
 build\syrctl.exe <pid> freeze | thaw
 ```
 
@@ -72,7 +74,10 @@ SYR_PAYLOAD()   // 每个 payload 写一次; 牵引 load 时自动安装全部�
 | --- | --- |
 | 栈参数（第 5+ 参）篡改 | detour 签名直接声明这些参数，改完调 original |
 | 返回地址 | `#include <intrin.h>` 后 `_ReturnAddress()` |
-| 内存写 | `SYR_MEM_WRITE(addr, bytes, n)` / `g_api->write_mem` |
+| 内存读写 | `SYR_MEM_WRITE` / `SYR_MEM_READ`（SEH 安全读，野指针不崩） |
+| 内存分配/释放 | `SYR_ALLOC(size, exec)` / `SYR_FREE`（RWX 或 RW 页） |
+| 页保护修改 | `SYR_PROTECT(addr, len, PAGE_...)` 返回旧保护 |
+| 特征码定位 | `g_api->scan(L"module", "48 8B ??", out, n)` |
 | 特征码定位 | `g_api->scan(L"module", "48 8B ??", out, n)` |
 | 日志 | `g_api->log("hit a=%lld", a)` → `syrctl <pid> log` 查看 |
 

@@ -33,12 +33,17 @@
 #include <windows.h>
 #endif
 
-#define SYR_VERSION 2
+// Api 版本契约: payload 编译时锁定的最低版本。牵引注入的表 version < 该值时
+// SyrPayloadInit 返回 -100 拒绝加载 —— 保证「注入器一次编译, 后续 DLL 只要
+// 满足本头文件的宏约定即可注入」, 不兼容时给出明确错误而非行为未定义。
+#define SYR_VERSION 3
+#define SYR_API_MIN 3
 
 namespace syr {
 
 // ---- 牵引DLL 注入给 payload 的 API 表 --------------------------------------
 // payload 不链接引擎: 由 SYR_PAYLOAD() 生成的 SyrPayloadInit 收到这张函数指针表。
+// 新能力只允许在尾部追加字段并递增 SYR_VERSION/SYR_API_MIN(ABI 单向兼容)。
 struct Api {
   int            version;
   // 目标模块基址(ASLR 下动态); module==nullptr 取主模块
@@ -55,6 +60,14 @@ struct Api {
   // 扫描指定模块的 .syhk64 登记段并全部安装(宏登记的钩子由此生效)
   int            (*install_section)(void* module);
   void           (*log)(const char* fmt, ...);
+  // --- v3 追加 ---
+  // SEH 安全读: 目标不可读返回 1 不崩溃
+  int            (*read_mem)(std::uintptr_t addr, void* buf, std::size_t len);
+  // 进程内分配: exec!=0 => RWX(可写机器码并直接执行), 否则 RW(堆式缓冲)
+  std::uintptr_t (*alloc_mem)(std::size_t size, int exec);
+  void           (*free_mem)(std::uintptr_t addr);
+  // 双向保护修改: 返回旧保护属性, 失败返回 0
+  std::uint32_t  (*protect)(std::uintptr_t addr, std::size_t len, std::uint32_t new_prot);
 };
 
 // payload 内全局 API 指针, SYR_PAYLOAD() 负责填充。
@@ -89,18 +102,46 @@ struct HookDecl {
       syr::detail::kMagic, 0u, (const wchar_t*)(MODULE),                      \
       (std::uint64_t)(RVA), #DETOUR, (void*)(DETOUR), (void**)(ORIG)};
 
-// ---- 内存写便捷宏(需要 g_api 已就绪, 即 SYR_PAYLOAD 之后) --------------------
+// ---- 内存/堆便捷宏(需要 g_api 已就绪, 即 SYR_PAYLOAD 之后) -------------------
 #define SYR_MEM_WRITE(ADDR, BUF, LEN) \
   (syr::g_api ? syr::g_api->write_mem((std::uintptr_t)(ADDR), (BUF), (LEN)) : -1)
+#define SYR_MEM_READ(ADDR, BUF, LEN) \
+  (syr::g_api ? syr::g_api->read_mem((std::uintptr_t)(ADDR), (BUF), (LEN)) : -1)
+#define SYR_ALLOC(SIZE, EXEC) \
+  (syr::g_api ? syr::g_api->alloc_mem((SIZE), (EXEC)) : 0)
+#define SYR_FREE(ADDR) \
+  (void)(syr::g_api ? syr::g_api->free_mem((std::uintptr_t)(ADDR)) : (void)0)
+#define SYR_PROTECT(ADDR, LEN, NEWPROT) \
+  (syr::g_api ? syr::g_api->protect((std::uintptr_t)(ADDR), (LEN), (NEWPROT)) : 0u)
 
 // ---- payload 入口 -----------------------------------------------------------
 // 每个 payload 的一个 TU 里写一次; 牵引 load 时自动调用, 返回安装钩子数或负错。
+// -100 = 牵引 API 版本低于本 payload 编译时锁定的最低版本(注入器需升级)。
 #define SYR_PAYLOAD()                                                          \
   static syr::Api* syr_g_api_storage = nullptr;                                \
   namespace syr { Api* g_api = nullptr; }                                      \
   extern "C" __declspec(dllexport) int __cdecl SyrPayloadInit(const syr::Api* api) { \
+    if (!api || api->version < SYR_API_MIN) return -100;                       \
     syr_g_api_storage = const_cast<syr::Api*>(api);                            \
     syr::g_api = syr_g_api_storage;                                            \
+    HMODULE h = nullptr;                                                       \
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |                 \
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,        \
+                       reinterpret_cast<LPCWSTR>(&SyrPayloadInit), &h);        \
+    return api->install_section(h);                                            \
+  }
+
+// 带自定义入口的版本: INIT 返回负值则中止(钩子仍会先于 INIT 安装不了——
+// INIT 在 install_section 之前执行, 返回负值即整体报错)。
+#define SYR_PAYLOAD_WITH_INIT(INIT)                                            \
+  static syr::Api* syr_g_api_storage = nullptr;                                \
+  namespace syr { Api* g_api = nullptr; }                                      \
+  extern "C" __declspec(dllexport) int __cdecl SyrPayloadInit(const syr::Api* api) { \
+    if (!api || api->version < SYR_API_MIN) return -100;                       \
+    syr_g_api_storage = const_cast<syr::Api*>(api);                            \
+    syr::g_api = syr_g_api_storage;                                            \
+    int r = INIT();                                                            \
+    if (r != 0) return r;                                                      \
     HMODULE h = nullptr;                                                       \
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |                 \
                            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,        \

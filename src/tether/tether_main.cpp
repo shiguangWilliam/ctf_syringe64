@@ -10,6 +10,7 @@
 //   hooks
 //   log
 //   freeze | thaw                       冻结/恢复其他全部线程(装钩子辅助)
+//   alloc <len> [exec] | free <addr>   进程内分配(RWX/RW)与释放
 //   quit                                关闭本连接(牵引常驻)
 #include <windows.h>
 #include <tlhelp32.h>
@@ -197,6 +198,18 @@ static DWORD WINAPI PipeServer(LPVOID) {
         char buf[64];
         _snprintf_s(buf, _TRUNCATE, "THAWED %d\n.", n);
         reply = buf;
+      } else if (!strcmp(cmd, "alloc")) {
+        size_t sz = (size_t)_strtoui64(arg1, nullptr, 0);
+        int exec = atoi(arg2);
+        uintptr_t a = SyrAllocMem(sz ? sz : 0x1000, exec);
+        char buf[64];
+        if (!a) _snprintf_s(buf, _TRUNCATE, "ERR alloc\n.");
+        else _snprintf_s(buf, _TRUNCATE, "%016llx\n.", (unsigned long long)a);
+        reply = buf;
+      } else if (!strcmp(cmd, "free")) {
+        uintptr_t a = _strtoui64(arg1, nullptr, 16);
+        SyrFreeMem(a);
+        reply = "OK\n.";
       } else if (!strcmp(cmd, "quit")) {
         reply = "BYE\n.";
         DWORD w = 0; WriteFile(pipe, reply.data(), (DWORD)reply.size(), &w, nullptr);

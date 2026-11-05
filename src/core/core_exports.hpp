@@ -11,6 +11,10 @@ int           SyrHookRegister(uintptr_t target, void* detour, void** original,
                               const char* name);
 int           SyrHookRemove(uintptr_t target);
 int           SyrWriteMem(uintptr_t addr, const void* buf, size_t len);
+int           SyrReadMem(uintptr_t addr, void* buf, size_t len);
+uintptr_t     SyrAllocMem(size_t size, int exec);
+void          SyrFreeMem(uintptr_t addr);
+uint32_t      SyrProtect(uintptr_t addr, size_t len, uint32_t new_prot);
 int           SyrScanPattern(const wchar_t* module, const char* pattern,
                              uintptr_t* out, int max_out);
 int           SyrInstallSection(void* module);

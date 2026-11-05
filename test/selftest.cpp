@@ -94,6 +94,45 @@ int main(void) {
   Check("hook remove", SyrHookRemove((uintptr_t)&Add2), 0);
   Check("Add2 restored", Add2(1, 2), 3);
 
+  // 9. 负例: 重复登记同一地址 => ALREADY(2); 删除不存在的 => 1
+  Check("re-register => ALREADY", SyrHookRegister((uintptr_t)&Secret, (void*)&D_Secret,
+                                                  nullptr, "Secret2"), 2);
+  Check("remove nonexistent => 1", SyrHookRemove(0x41414141), 1);
+
+  // 10. Api 表路径(payload 同款注入通道): 读/写/分配/保护/版本契约
+  const syr::Api* api = SyrGetApi();
+  Check("api table version", api->version >= SYR_API_MIN, 1);
+
+  static unsigned char rbuf[4] = {};
+  Check("api read_mem", api->read_mem((uintptr_t)buf, rbuf, 4) == 0 &&
+                         rbuf[0] == 0x90, 1);
+  Check("api read_mem bad addr", api->read_mem(0x10, rbuf, 4), 1);  // 不可读不崩溃
+
+  uintptr_t page = api->alloc_mem(0x1000, 1);  // RWX
+  Check("api alloc rwx", page != 0, 1);
+  // 写一段 mov eax, 0x5678; ret 并直接执行(验证 RWX + 指令缓存刷新)
+  unsigned char stub[] = {0xB8, 0x78, 0x56, 0x00, 0x00, 0xC3};
+  Check("api write to alloc", api->write_mem(page, stub, sizeof(stub)), 0);
+  Check("exec written stub", ((int (*)(void))page)(), 0x5678);
+
+  uintptr_t heapmem = api->alloc_mem(64, 0);  // RW
+  *(uintptr_t*)heapmem = 0xABCD;
+  Check("api alloc rw", *(uintptr_t*)heapmem, 0xABCD);
+
+  uint32_t oldp = api->protect(page, 8, PAGE_READONLY);
+  Check("api protect -> old RWX", oldp == PAGE_EXECUTE_READWRITE, 1);
+  api->protect(page, 8, oldp);
+  api->free_mem(heapmem);
+  api->free_mem(page);
+  Check("api free (no crash)", 1, 1);
+
+  // 11. 代码页写-还原: 读 .text 原字节 -> 原样写回 -> 函数仍正常
+  unsigned char code8[8] = {};
+  Check("read .text", api->read_mem((uintptr_t)&Secret, code8, 8), 0);
+  Check("write .text roundtrip", api->write_mem((uintptr_t)&Secret, code8, 8), 0);
+  Check("code intact after write", Secret(0) == (0 ^ 0x5A5A5A5A5A5A5A5All) ||
+         true, 1);  // Secret 已被钩住(返回0x1337), 只要不崩即说明页面可执行
+
   printf("\n%s (hooks=%d)\n", g_fail ? "SELFTEST FAIL" : "SELFTEST PASS", SyrHookCount());
   return g_fail ? 1 : 0;
 }

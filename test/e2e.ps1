@@ -59,7 +59,25 @@ try {
   $r = Puppet 'flow 5';        Write-Host "flow 5 -> $r (want 2468)"; if ($r -ne 'flow=2468') { $fail++ }
   if ($fail) { throw "e2e behavior checks failed ($fail)" }
 
-  # 6) 冻结/解冻冒烟
+  # 6) 操作员侧内存链路: alloc -> write -> read 回读一致
+  $allocOut = & (Join-Path $out 'syrctl.exe') $pid_ alloc 64 0
+  $memAddr = ($allocOut | Select-Object -First 1).Trim()
+  Write-Host "alloc -> $memAddr"
+  & (Join-Path $out 'syrctl.exe') $pid_ write $memAddr DEADBEEF | Out-Null
+  $rd = (& (Join-Path $out 'syrctl.exe') $pid_ read $memAddr 4 | Select-Object -First 1).Trim()
+  Write-Host "read back -> $rd (want DEADBEEF)"
+  if ($rd -ne 'DEADBEEF') { throw 'e2e memory roundtrip failed' }
+  & (Join-Path $out 'syrctl.exe') $pid_ free $memAddr | Out-Null
+
+  # 7) 第二 payload 热加载(零钩子, 验证同进程追加 + 注入器零重编)
+  $pl2 = Join-Path $out 'e2e_payload2.dll'
+  Invoke-Build 'e2e payload2' ("cl /nologo /LD /O2 /std:c++17 /source-charset:utf-8 /EHsc /W3 /I`"" + $root + "\include`" `"" + $root + "\example\payload_second.cpp`" /Fe:`"$pl2`"")
+  & (Join-Path $out 'syrctl.exe') $pid_ load $pl2 | Out-Null
+  $log2 = & (Join-Path $out 'syrctl.exe') $pid_ log
+  if (-not ($log2 -match 'payload_second: alive')) { throw 'e2e second payload failed' }
+  Write-Host 'second payload hot-load OK (injector untouched)'
+
+  # 8) 冻结/解冻冒烟
   & (Join-Path $out 'syrctl.exe') $pid_ freeze
   & (Join-Path $out 'syrctl.exe') $pid_ thaw
   [void](Puppet 'add 3 4')
