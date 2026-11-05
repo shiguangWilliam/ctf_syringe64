@@ -34,9 +34,13 @@ try {
   & (Join-Path $out 'launcher64.exe') --attach $pid_ (Join-Path $out 'syringe-tether.dll')
   if ($LASTEXITCODE -ne 0) { throw 'launcher attach failed' }
 
-  # 2) 控制面握手
+  # 2) 控制面握手(管道 + Web UI)
   & (Join-Path $out 'syrctl.exe') $pid_ hello
   if ($LASTEXITCODE -ne 0) { throw 'tether hello failed' }
+  $port = 18700 + ([int]$pid_ % 256)
+  $wresp = (Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$port/api/exec?c=hello").Content
+  if ($wresp -notmatch 'syringe64 tether') { throw 'web ui hello failed' }
+  Write-Host "web ui OK on :$port"
 
   # 3) 编译宏登记 payload(注入真实 RVA/绝对地址)
   $pl = Join-Path $out 'e2e_payload.dll'

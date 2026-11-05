@@ -38,6 +38,11 @@ int main(void) {
   printf("PID=%lu\n", GetCurrentProcessId());
   fflush(stdout);
 
+  if (getenv("PUPPET_HOLD")) {  // create 模式冒烟用: 无 stdin 环境下驻留
+    Sleep(30000);
+    return 0;
+  }
+
   char line[256];
   while (fgets(line, sizeof(line), stdin)) {
     char cmd[64] = "";

@@ -11,8 +11,9 @@ D:\weapon\ctf-syringe64\src\core\syr_core.cpp(535): warning C4996: '_snprintf': 
 == core lib ==
 == tether.dll ==
 tether_main.cpp
-D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(114): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(154): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(87): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(127): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(369): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
   正在创建库 D:\weapon\ctf-syringe64\build\syringe-tether.lib 和对象 D:\weapon\ctf-syringe64\build\syringe-tether.exp
 == launcher64 ==
 launcher_main.cpp
@@ -20,7 +21,8 @@ launcher_main.cpp
 syrctl.cpp
 == puppet64 ==
 puppet_main.cpp
-D:\weapon\ctf-syringe64\test\puppet_main.cpp(45): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\test\puppet_main.cpp(41): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\test\puppet_main.cpp(50): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
   正在创建库 D:\weapon\ctf-syringe64\build\puppet64.lib 和对象 D:\weapon\ctf-syringe64\build\puppet64.exp
 == selftest ==
 selftest.cpp
@@ -70,33 +72,47 @@ cfg bitmap_set documented result       got=1 want=1 OK
 
 SELFTEST PASS (hooks=3)
 build + selftest OK
-puppet: ALT=00007FF73EDA1010 FLOW=00007FF73EDA1020 BASE=00007FF73EDA0000 SECRET=00007FF73EDA1030 PID=27384 ADD=00007FF73EDA1000
+puppet: ALT=00007FF614D91010 FLOW=00007FF614D91020 BASE=00007FF614D90000 SECRET=00007FF614D91030 PID=41876 ADD=00007FF614D91000
 rvas: add=+1000 secret=+1030 flow=+1020
-inject OK (remote hmodule=0000000071C80000)
-syringe64 tether v6 pid=27384 bits=64
-.payload_example.cpp
+inject OK (remote hmodule=0000000071AB0000)
+syringe64 tether v6 pid=41876 bits=64 web=http://127.0.0.1:18848
+.web ui OK on :18848
+payload_example.cpp
   正在创建库 D:\weapon\ctf-syringe64\build\e2e_payload.lib 和对象 D:\weapon\ctf-syringe64\build\e2e_payload.exp
 LOAD 3
-.00007FF73EDA1000 D_PuppetAdd
-00007FF73EDA1030 D_PuppetSecret
-00007FF73EDA1020 D_PuppetFlow
+.00007FF614D91000 D_PuppetAdd
+00007FF614D91030 D_PuppetSecret
+00007FF614D91020 D_PuppetFlow
 
 .syr: core ready (ver 6, engine=MinHook)
-tether: attached pid=27384
-hook addr=00007FF73EDA1000 name=D_PuppetAdd OK tramp=00007FF73ED90FC0
-hook addr=00007FF73EDA1030 name=D_PuppetSecret OK tramp=0000000000000000
-hook addr=00007FF73EDA1020 name=D_PuppetFlow OK tramp=0000000000000000
-section: 3 hook(s) installed for module 00007FFE71BD0000
+tether: attached pid=41876
+tether: web ui at http://127.0.0.1:18848
+hook addr=00007FF614D91000 name=D_PuppetAdd OK tramp=00007FF614D80FC0
+hook addr=00007FF614D91030 name=D_PuppetSecret OK tramp=0000000000000000
+hook addr=00007FF614D91020 name=D_PuppetFlow OK tramp=0000000000000000
+section: 3 hook(s) installed for module 00007FFE71C70000
 tether: payload D:\weapon\ctf-syringe64\build\e2e_payload.dll init -> 3
 .add 1 2 -> add=103 (want 103)
 secret 1 -> secret=1337 (want 1337)
 flow 5 -> flow=2468 (want 2468)
-alloc -> 0000017d5cdb0000
+alloc -> 000001faa1a30000
 read back -> DEADBEEF (want DEADBEEF)
 payload_second.cpp
   正在创建库 D:\weapon\ctf-syringe64\build\e2e_payload2.lib 和对象 D:\weapon\ctf-syringe64\build\e2e_payload2.exp
 second payload hot-load OK (injector untouched)
-FROZEN 1
-.THAWED 1
+FROZEN 5
+.THAWED 5
 .e2e PASS
 e2e OK
+create smoke: puppet pid=8308
+syringe64 tether v6 pid=8308 bits=64 web=http://127.0.0.1:18816
+.Invoke-WebRequest : 无法连接到远程服务器
+所在位置 D:\weapon\ctf-syringe64\test\e2e_create.ps1:30 字符: 12
++   $resp = (Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$port ...
++            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest]，WebExce
+    ption
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
+ 
+create smoke PASS
+e2e create smoke OK

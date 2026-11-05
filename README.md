@@ -42,6 +42,10 @@ build\syrctl.exe <pid> free <addr>
 build\syrctl.exe <pid> freeze | thaw
 ```
 
+**Web UI**（监控 + 操作台）：牵引注入后浏览器打开 `http://127.0.0.1:18700+pid%256`
+（`hello` 命令也会回报地址）。页面含 status/hooks/modules/log 自动刷新（2s）与命令控制台，
+走 `GET /api/exec?c=<命令>`，与管道命令面完全同构。
+
 ## 编写 payload（赛场模板见 example/payload_example.cpp）
 
 ```cpp

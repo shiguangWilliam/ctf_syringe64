@@ -28,7 +28,7 @@ Invoke-Build 'core cpp' "cl /nologo /c /std:c++17 /source-charset:utf-8 /EHsc /W
 Invoke-Build 'core lib' "lib /nologo /OUT:`"$obj\syr_core.lib`" `"$obj\syr_core.obj`" $obj\mh\*.obj"
 
 # ---- tether dll ----
-Invoke-Build 'tether.dll' "cl /nologo /LD /std:c++17 /source-charset:utf-8 /EHsc /W3 /O2 /I`"$inc`" /I`"$corei`" /I`"$mh\include`" `"$root\src\tether\tether_main.cpp`" `"$obj\syr_core.lib`" /Fe:`"$out\syringe-tether.dll`" /Fo:$obj\tether\ /link psapi.lib"
+Invoke-Build 'tether.dll' "cl /nologo /LD /std:c++17 /source-charset:utf-8 /EHsc /W3 /O2 /I`"$inc`" /I`"$corei`" /I`"$mh\include`" `"$root\src\tether\tether_main.cpp`" `"$obj\syr_core.lib`" /Fe:`"$out\syringe-tether.dll`" /Fo:$obj\tether\ /link psapi.lib ws2_32.lib"
 
 # ---- launcher / ctl ----
 Invoke-Build 'launcher64' "cl /nologo /O2 /std:c++17 /source-charset:utf-8 /EHsc /W3 `"$root\src\launcher\launcher_main.cpp`" /Fe:`"$out\launcher64.exe`" /Fo:`"$obj\launcher.obj`""
@@ -45,3 +45,7 @@ Write-Host 'build + selftest OK'
 & (Join-Path $root 'test\e2e.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'e2e failed' }
 Write-Host 'e2e OK'
+
+& (Join-Path $root 'test\e2e_create.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'e2e create smoke failed' }
+Write-Host 'e2e create smoke OK'
