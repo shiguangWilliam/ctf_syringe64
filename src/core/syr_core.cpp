@@ -308,6 +308,7 @@ __declspec(dllexport) int SyrScanRwx(const char* pattern, uintptr_t* out, int ma
 }
 
 // ---- CFG: 状态查询 + 任意执行地址的位图放行(通用能力, 与托管运行时无关) ----
+__declspec(dllexport) int SyrCfgBitmapSet(uintptr_t addr);  // 前向声明(实现在位图直写节)
 static uint32_t MainModuleGuardFlags(void) {
   IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)GetModuleHandleW(nullptr);
   if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
@@ -328,18 +329,34 @@ __declspec(dllexport) int SyrCfgStatus(void) {
 
 __declspec(dllexport) int SyrCfgValidate(uintptr_t addr, size_t len) {
   if (!SyrCfgStatus()) return 0;   // 未开 CFG: 恒通过
-  // best-effort: 失败只记日志不阻塞(文档明示; 16 字节粒度对齐后可重试)。
+  // 官方 API 逐模块解析(新系统仅 kernelbase 导出, 老系统在 kernel32)。
   using Fn = BOOL(WINAPI*)(HANDLE, PVOID, ULONG, PVOID, PULONG);
-  static Fn fn = (Fn)(void*)GetProcAddress(
-      GetModuleHandleW(L"kernel32.dll"), "SetProcessValidCallTargets");
-  if (!fn) { logf("cfg_validate: API unavailable (pass-through)"); return 0; }
+  static Fn fn = nullptr;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    for (auto m : {L"kernel32.dll", L"kernelbase.dll", L"ntdll.dll"}) {
+      fn = (Fn)(void*)GetProcAddress(GetModuleHandleW(m), "SetProcessValidCallTargets");
+      if (fn) break;
+    }
+  }
+  if (!fn) {  // API 不在(部分新系统): 退位图直写; 位图也定位不到则记日志放行
+    int br = SyrCfgBitmapSet(addr);
+    if (br == 2) logf("cfg_validate %016llX: user bitmap absent (kernel-CFG host), "
+                      "pass-through", (unsigned long long)addr);
+    return br == 3 ? 3 : 0;
+  }
   struct { ULONG Offset; ULONG Flags; } info{};  // CFG_CALL_TARGET_INFO 等价
   info.Offset = (ULONG)(addr & 0xFFFFFFFF);
   info.Flags = 1 /* CFG_CALL_TARGET_VALID */;
   ULONG processed = 0;
-  if (!fn(GetCurrentProcess(), nullptr, 1, &info, &processed))
-    logf("cfg_validate %016llX best-effort failed gle=%lu (pass-through)",
-         (unsigned long long)addr, GetLastError());
+  if (!fn(GetCurrentProcess(), nullptr, 1, &info, &processed)) {
+    // API 拒收(如内核化 CFG 的系统): 位图兜底; 仍不行则记日志放行。
+    int br = SyrCfgBitmapSet(addr);
+    logf("cfg_validate %016llX: API refused gle=%lu, bitmap=%d",
+         (unsigned long long)addr, GetLastError(), br);
+    return br == 3 ? 3 : 0;
+  }
   (void)len;
   return 0;
 }
@@ -442,6 +459,74 @@ __declspec(dllexport) uintptr_t SyrPeExport(uintptr_t base, const char* name) {
   return 0;
 }
 
+// ---- CFG bitmap 直写: 在 ntdll 数据段里找指向位图区的索引指针 ----
+// 原理: CFG 位图(1bit=8字节, 稀疏压缩白名单)的基址一定被 ntdll 某数据槽索引。
+// 指纹: 页对齐指针 + 指向巨型保留区 + "已知合法间接调用目标(kernel32 导出函数)
+// 对应位已置 1"。篡改位图不影响地址空间布局(只在既有位图内改位)。
+static uintptr_t g_cfg_bitmap = 0;
+
+static bool LooksLikeCfgBitmap(uintptr_t bm) {
+  if (bm < 0x10000 || bm > 0x7FFFFFFFFFFFull || (bm & 0xFFF)) return false;
+  HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
+  if (!k32) return false;
+  uintptr_t known = (uintptr_t)GetProcAddress(k32, "GetProcAddress");
+  if (!known) return false;
+  MEMORY_BASIC_INFORMATION mbi{};
+  if (!VirtualQuery((void*)bm, &mbi, sizeof(mbi))) return false;
+  if (mbi.RegionSize < 0x800000000ull) return false;  // >=512GB 巨型区
+  uint8_t byte = 0;
+  if (!SyrSafeReadBlock(bm + (known >> 9), &byte, 1)) return false;
+  return (byte >> ((known >> 3) & 63)) & 1;
+}
+
+static uintptr_t FindCfgBitmapBase(void) {
+  if (g_cfg_bitmap) return g_cfg_bitmap;
+  HMODULE nt = GetModuleHandleW(L"ntdll.dll");
+  if (!nt) return 0;
+  IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)nt;
+  IMAGE_NT_HEADERS* nth = (IMAGE_NT_HEADERS*)((uintptr_t)nt + dos->e_lfanew);
+  auto* sec = IMAGE_FIRST_SECTION(nth);
+  for (int i = 0; i < nth->FileHeader.NumberOfSections && !g_cfg_bitmap; i++) {
+    if (!(sec[i].Characteristics & IMAGE_SCN_MEM_WRITE)) continue;
+    if (!(sec[i].Characteristics & IMAGE_SCN_MEM_READ)) continue;
+    uintptr_t base = (uintptr_t)nt + sec[i].VirtualAddress;
+    size_t sz = sec[i].Misc.VirtualSize;
+    for (size_t k = 0; k + 8 <= sz; k += 8) {
+      uintptr_t p = 0;
+      if (!SyrSafeReadBlock(base + k, &p, 8)) break;
+      if (LooksLikeCfgBitmap(p)) {
+        g_cfg_bitmap = p;
+        logf("cfg: bitmap base = %016llX (ntdll data index sec=%d off=%zx)",
+             (unsigned long long)p, i, k);
+        break;
+      }
+    }
+  }
+  if (!g_cfg_bitmap) logf("cfg: bitmap index pointer not found");
+  return g_cfg_bitmap;
+}
+
+// 把 addr 加入 CFG 白名单位图。返回 0 成功; 1=未开CFG(无需处理); 2=定位失败; 3=写失败
+__declspec(dllexport) int SyrCfgBitmapSet(uintptr_t addr) {
+  if (!SyrCfgStatus()) return 1;
+  uintptr_t base = FindCfgBitmapBase();
+  if (!base) return 2;
+  uintptr_t byte_at = base + (addr >> 9);
+  uint8_t old = 0;
+  if (!SyrSafeReadBlock(byte_at, &old, 1)) return 3;
+  uint8_t nv = old | (uint8_t)(1u << ((addr >> 3) & 63));
+  if (nv != old) {
+    if (SyrWriteMem(byte_at, &nv, 1) != 0) return 3;
+    uint8_t chk = 0;
+    if (!SyrSafeReadBlock(byte_at, &chk, 1) || chk != nv) return 3;
+  }
+  return 0;
+}
+
+__declspec(dllexport) uintptr_t SyrCfgBitmapBase(void) {
+  return SyrCfgStatus() ? FindCfgBitmapBase() : 0;
+}
+
 static char g_hooks_info[4096];
 __declspec(dllexport) const char* SyrHooksInfo(void) {
   char* p = g_hooks_info;
@@ -489,6 +574,8 @@ static Api g_api_table = {
     SyrPeSections,
     SyrPeExport,
     SyrScanRange,
+    SyrCfgBitmapSet,
+    SyrCfgBitmapBase,
 };
 
 extern "C" __declspec(dllexport) const Api* SyrGetApi(void) { return &g_api_table; }

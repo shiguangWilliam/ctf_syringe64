@@ -22,6 +22,8 @@ int           SyrPeSections(uintptr_t base, syr::SectionInfo* out, int max_out);
 uintptr_t     SyrPeExport(uintptr_t base, const char* name);
 int           SyrScanRange(uintptr_t start, uintptr_t end,
                            const char* pattern, uintptr_t* out, int max_out);
+int           SyrCfgBitmapSet(uintptr_t addr);
+uintptr_t     SyrCfgBitmapBase(void);
 int           SyrScanPattern(const wchar_t* module, const char* pattern,
                              uintptr_t* out, int max_out);
 int           SyrInstallSection(void* module);

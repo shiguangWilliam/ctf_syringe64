@@ -36,7 +36,7 @@
 // Api 版本契约: payload 编译时锁定的最低版本。牵引注入的表 version < 该值时
 // SyrPayloadInit 返回 -100 拒绝加载 —— 保证「注入器一次编译, 后续 DLL 只要
 // 满足本头文件的宏约定即可注入」, 不兼容时给出明确错误而非行为未定义。
-#define SYR_VERSION 5
+#define SYR_VERSION 6
 #define SYR_API_MIN 3
 
 namespace syr {
@@ -92,6 +92,11 @@ struct Api {
   // 地址区间特征码扫描(SEH 安全): 覆盖"段内可执行块"精确定位需求。
   int            (*scan_range)(std::uintptr_t start, std::uintptr_t end,
                                const char* pattern, std::uintptr_t* out, int max_out);
+  // --- v6 追加(CFG bitmap 直写) ---
+  // 把 addr 置入 CFG 白名单位图(1bit=8字节, 稀疏压缩, 不影响地址空间布局)。
+  // 返回: 0=成功 1=未开CFG(无需) 2=位图定位失败 3=写失败
+  int            (*cfg_bitmap_set)(std::uintptr_t addr);
+  std::uintptr_t (*cfg_bitmap_base)(void);  // 0=未开CFG或定位失败
 };
 
 // payload 内全局 API 指针, SYR_PAYLOAD() 负责填充。

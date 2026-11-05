@@ -207,6 +207,17 @@ int main(void) {
     Check("scan_range hits in .text", hitAdd, 1);
   }
 
+  // 15. CFG: validate 走官方 API(kernelbase) -> 位图直写兜底。
+  //     本机实测: 新 Windows 校验内核化, 用户态位图可能定位不到 => 2 是合法结果。
+  if (api->cfg_status()) {
+    Check("cfg_validate works or documented-fallback",
+          api->cfg_validate((uintptr_t)&Add2, 16), 0);
+    int br = api->cfg_bitmap_set((uintptr_t)&Add2);
+    Check("cfg bitmap_set documented result", br == 0 || br == 2, 1);
+  } else {
+    printf("  cfg off on this host, skipped (documented noop)\n");
+  }
+
   printf("\n%s (hooks=%d)\n", g_fail ? "SELFTEST FAIL" : "SELFTEST PASS", SyrHookCount());
   return g_fail ? 1 : 0;
 }

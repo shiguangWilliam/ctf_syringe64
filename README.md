@@ -78,7 +78,7 @@ SYR_PAYLOAD()   // 每个 payload 写一次; 牵引 load 时自动安装全部�
 | 内存分配/释放 | `SYR_ALLOC(size, exec)` / `SYR_FREE`（RWX 或 RW 页） |
 | 页保护修改 | `SYR_PROTECT(addr, len, PAGE_...)` 返回旧保护 |
 | 特征码定位 | `g_api->scan(L"module", "48 8B ??", out, n)`；**全进程堆上 RWX 扫描** `g_api->scan_rwx(...)`（定位 JIT 产物/运行期生成代码；管道命令 scanrwx） |
-| CFG | `g_api->cfg_status()/cfg_validate(addr,len)`（未开 CFG 恒通过，best-effort） |
+| CFG | `cfg_status()`；`cfg_validate(addr,len)`（官方 API→位图直写→日志放行 三级兜底）；`cfg_bitmap_set/base`（ntdll 索引指针法直写白名单位图，返回 0/1/2/3 诚实状态码；新系统 CFG 已内核化、用户态位图不存在时返回 2） |
 | PE 段表 | `g_api->pe_sections(base, out, n)`（任意已加载 DLL 的可执行块范围；管道 `pe <base>`） |
 | 导出自解析 | `g_api->pe_export(base, "Name")`（剥加载器/手动映射场景仍可用；管道 `export <base> <name>`） |
 | 区间扫描 | `g_api->scan_range(start, end, pat, out, n)`（段内精确定位；管道 `scanrange <start> <end> "<pat>"`） |

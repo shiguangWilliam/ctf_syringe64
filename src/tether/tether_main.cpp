@@ -10,6 +10,7 @@
 //   pe <hexbase>                        段表(可执行块范围)
 //   export <hexbase> <name>             自解析导出表 -> 函数 VA
 //   scanrange <start> <end> "<pattern>" 地址区间扫描
+//   cfgset <hexaddr>                    把地址写入 CFG 白名单位图
 //   load <绝对路径.dll>                  LoadLibraryExW + 调 SyrPayloadInit
 //   hooks
 //   log
@@ -267,6 +268,13 @@ static DWORD WINAPI PipeServer(LPVOID) {
           reply += l; reply += "\n";
         }
         reply += ".";
+      } else if (!strcmp(cmd, "cfgset")) {
+        // cfgset <hexaddr> —— 把地址写进 CFG 白名单位图(任意地址注入放行)
+        uintptr_t a = _strtoui64(arg1, nullptr, 16);
+        char l[64];
+        _snprintf_s(l, _TRUNCATE, "CFGSET %d base=%016llx\n.",
+                    SyrCfgBitmapSet(a), (unsigned long long)SyrCfgBitmapBase());
+        reply = l;
       } else if (!strcmp(cmd, "alloc")) {
         size_t sz = (size_t)_strtoui64(arg1, nullptr, 0);
         int exec = atoi(arg2);
