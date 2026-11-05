@@ -79,6 +79,9 @@ SYR_PAYLOAD()   // 每个 payload 写一次; 牵引 load 时自动安装全部�
 | 页保护修改 | `SYR_PROTECT(addr, len, PAGE_...)` 返回旧保护 |
 | 特征码定位 | `g_api->scan(L"module", "48 8B ??", out, n)`；**全进程堆上 RWX 扫描** `g_api->scan_rwx(...)`（定位 JIT 产物/运行期生成代码；管道命令 scanrwx） |
 | CFG | `g_api->cfg_status()/cfg_validate(addr,len)`（未开 CFG 恒通过，best-effort） |
+| PE 段表 | `g_api->pe_sections(base, out, n)`（任意已加载 DLL 的可执行块范围；管道 `pe <base>`） |
+| 导出自解析 | `g_api->pe_export(base, "Name")`（剥加载器/手动映射场景仍可用；管道 `export <base> <name>`） |
+| 区间扫描 | `g_api->scan_range(start, end, pat, out, n)`（段内精确定位；管道 `scanrange <start> <end> "<pat>"`） |
 | 日志 | `g_api->log("hit a=%lld", a)` → `syrctl <pid> log` 查看 |
 
 编译：`cl /LD /O2 /std:c++17 /Iinclude payload.cpp`（建议 `/MT` 静态 CRT）。

@@ -36,10 +36,19 @@
 // Api 版本契约: payload 编译时锁定的最低版本。牵引注入的表 version < 该值时
 // SyrPayloadInit 返回 -100 拒绝加载 —— 保证「注入器一次编译, 后续 DLL 只要
 // 满足本头文件的宏约定即可注入」, 不兼容时给出明确错误而非行为未定义。
-#define SYR_VERSION 4
+#define SYR_VERSION 5
 #define SYR_API_MIN 3
 
 namespace syr {
+
+// PE 段信息(pe_sections 输出)
+struct SectionInfo {
+  char           name[8];   // 段名(不足 8 字节零结尾)
+  std::uintptr_t va;        // 段起始绝对地址
+  std::size_t    vsize;     // 虚拟大小
+  int            exec;      // 含 IMAGE_SCN_MEM_EXECUTE
+  int            flags;     // 原 Characteristics
+};
 
 // ---- 牵引DLL 注入给 payload 的 API 表 --------------------------------------
 // payload 不链接引擎: 由 SYR_PAYLOAD() 生成的 SyrPayloadInit 收到这张函数指针表。
@@ -74,6 +83,15 @@ struct Api {
   // CFG: 1=主模块开启 CF_INSTRUMENTED; validate 把地址加入合法间接调用位图
   int            (*cfg_status)(void);
   int            (*cfg_validate)(std::uintptr_t addr, std::size_t len);
+  // --- v5 追加(PE 视角: 任意已加载 DLL 的段表/导出/区间扫描) ---
+  // 段信息(name 零结尾; exec=可执行块)。返回段数, 负数=头非法。
+  int            (*pe_sections)(std::uintptr_t base, SectionInfo* out, int max_out);
+  // 自解析导出表: 返回函数 VA, 0=未找到。对剥加载器/手动映射/GetProcAddress
+  // 失效的场景(如加固壳内的 GameAssembly) 依然有效。
+  std::uintptr_t (*pe_export)(std::uintptr_t base, const char* name);
+  // 地址区间特征码扫描(SEH 安全): 覆盖"段内可执行块"精确定位需求。
+  int            (*scan_range)(std::uintptr_t start, std::uintptr_t end,
+                               const char* pattern, std::uintptr_t* out, int max_out);
 };
 
 // payload 内全局 API 指针, SYR_PAYLOAD() 负责填充。

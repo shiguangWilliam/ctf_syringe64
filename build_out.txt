@@ -7,12 +7,12 @@ hde64.c
 正在生成代码...
 == core cpp ==
 syr_core.cpp
-D:\weapon\ctf-syringe64\src\core\syr_core.cpp(352): warning C4996: '_snprintf': This function or variable may be unsafe. Consider using _snprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\src\core\syr_core.cpp(450): warning C4996: '_snprintf': This function or variable may be unsafe. Consider using _snprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
 == core lib ==
 == tether.dll ==
 tether_main.cpp
-D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(110): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(150): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(113): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\weapon\ctf-syringe64\src\tether\tether_main.cpp(153): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
   正在创建库 D:\weapon\ctf-syringe64\build\syringe-tether.lib 和对象 D:\weapon\ctf-syringe64\build\syringe-tether.exp
 == launcher64 ==
 launcher_main.cpp
@@ -60,31 +60,36 @@ jit-sim unhook                         got=0 want=0 OK
 jit-sim restored                       got=7 want=7 OK
 cfg_status callable                    got=1 want=1 OK
 cfg_validate noop/executable           got=1 want=1 OK
+pe_sections .text exec                 got=1 want=1 OK
+pe_sections bad base                   got=1 want=1 OK
+pe_export == GetProcAddress            got=7FFE9BD83140 want=7FFE9BD83140 OK
+pe_export missing => 0                 got=0 want=0 OK
+scan_range hits in .text               got=1 want=1 OK
 
 SELFTEST PASS (hooks=3)
 build + selftest OK
-puppet: ALT=00007FF7A9B01010 FLOW=00007FF7A9B01020 BASE=00007FF7A9B00000 SECRET=00007FF7A9B01030 PID=46524 ADD=00007FF7A9B01000
+puppet: ALT=00007FF61E861010 FLOW=00007FF61E861020 BASE=00007FF61E860000 SECRET=00007FF61E861030 PID=39164 ADD=00007FF61E861000
 rvas: add=+1000 secret=+1030 flow=+1020
-inject OK (remote hmodule=0000000071AB0000)
-syringe64 tether v4 pid=46524 bits=64
+inject OK (remote hmodule=00000000432B0000)
+syringe64 tether v5 pid=39164 bits=64
 .payload_example.cpp
   正在创建库 D:\weapon\ctf-syringe64\build\e2e_payload.lib 和对象 D:\weapon\ctf-syringe64\build\e2e_payload.exp
 LOAD 3
-.00007FF7A9B01000 D_PuppetAdd
-00007FF7A9B01030 D_PuppetSecret
-00007FF7A9B01020 D_PuppetFlow
+.00007FF61E861000 D_PuppetAdd
+00007FF61E861030 D_PuppetSecret
+00007FF61E861020 D_PuppetFlow
 
-.syr: core ready (ver 4, engine=MinHook)
-tether: attached pid=46524
-hook addr=00007FF7A9B01000 name=D_PuppetAdd OK tramp=00007FF7A9AF0FC0
-hook addr=00007FF7A9B01030 name=D_PuppetSecret OK tramp=0000000000000000
-hook addr=00007FF7A9B01020 name=D_PuppetFlow OK tramp=0000000000000000
-section: 3 hook(s) installed for module 00007FFE63760000
+.syr: core ready (ver 5, engine=MinHook)
+tether: attached pid=39164
+hook addr=00007FF61E861000 name=D_PuppetAdd OK tramp=00007FF61E850FC0
+hook addr=00007FF61E861030 name=D_PuppetSecret OK tramp=0000000000000000
+hook addr=00007FF61E861020 name=D_PuppetFlow OK tramp=0000000000000000
+section: 3 hook(s) installed for module 00007FFE60600000
 tether: payload D:\weapon\ctf-syringe64\build\e2e_payload.dll init -> 3
 .add 1 2 -> add=103 (want 103)
 secret 1 -> secret=1337 (want 1337)
 flow 5 -> flow=2468 (want 2468)
-alloc -> 000001d9ec180000
+alloc -> 000002b868830000
 read back -> DEADBEEF (want DEADBEEF)
 payload_second.cpp
   正在创建库 D:\weapon\ctf-syringe64\build\e2e_payload2.lib 和对象 D:\weapon\ctf-syringe64\build\e2e_payload2.exp

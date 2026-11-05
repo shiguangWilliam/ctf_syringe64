@@ -173,6 +173,40 @@ int main(void) {
   Check("cfg_status callable", 1, 1);
   Check("cfg_validate noop/executable", api->cfg_validate((uintptr_t)&Add2, 16) == 0, 1);
 
+  // 14. PE 视角: 段表 / 导出自解析 / 区间扫描
+  {
+    syr::SectionInfo secs[16] = {};
+    uintptr_t k32 = (uintptr_t)GetModuleHandleW(L"kernel32.dll");
+    int nsec = api->pe_sections(k32, secs, 16);
+    bool hasText = false;
+    for (int i = 0; i < nsec; i++)
+      if (!strcmp(secs[i].name, ".text") && secs[i].exec) hasText = true;
+    Check("pe_sections .text exec", nsec > 0 && hasText, 1);
+    Check("pe_sections bad base", api->pe_sections(0x5000, secs, 16) < 0, 1);
+
+    // 自解析导出须与 GetProcAddress 一致(对剥加载器场景依然有效)
+    Check("pe_export == GetProcAddress",
+          api->pe_export(k32, "GetProcAddress"),
+          (uintptr_t)GetProcAddress((HMODULE)k32, "GetProcAddress"));
+    Check("pe_export missing => 0", api->pe_export(k32, "NoSuchName_XYZ"), 0);
+
+    // 区间扫描: 只在自己 .text 段内找 Add2 函数首字节序列(先读出再当特征)
+    unsigned char sig[8] = {};
+    api->read_mem((uintptr_t)&Add2, sig, 8);
+    char pats[64];
+    _snprintf_s(pats, _TRUNCATE, "%02X %02X %02X %02X %02X %02X %02X %02X",
+                sig[0], sig[1], sig[2], sig[3], sig[4], sig[5], sig[6], sig[7]);
+    int nself = api->pe_sections((uintptr_t)GetModuleHandleW(nullptr), secs, 16);
+    uintptr_t tstart = 0, tend = 0;
+    for (int i = 0; i < nself; i++)
+      if (secs[i].exec) { tstart = secs[i].va; tend = tstart + secs[i].vsize; break; }
+    uintptr_t rh[8] = {};
+    int rn2 = api->scan_range(tstart, tend, pats, rh, 8);
+    bool hitAdd = false;
+    for (int i = 0; i < rn2; i++) hitAdd |= rh[i] == (uintptr_t)&Add2;
+    Check("scan_range hits in .text", hitAdd, 1);
+  }
+
   printf("\n%s (hooks=%d)\n", g_fail ? "SELFTEST FAIL" : "SELFTEST PASS", SyrHookCount());
   return g_fail ? 1 : 0;
 }

@@ -344,6 +344,104 @@ __declspec(dllexport) int SyrCfgValidate(uintptr_t addr, size_t len) {
   return 0;
 }
 
+// ---- PE 视角服务: 段表 / 导出自解析 / 区间扫描(零耦合, 只读 PE 结构) --------
+static bool SyrSafeReadBlock(uintptr_t addr, void* buf, size_t len) {
+  __try { memcpy(buf, (const void*)addr, len); return true; }
+  __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+static IMAGE_NT_HEADERS64* PeNt(uintptr_t base) {
+  IMAGE_DOS_HEADER dos{};
+  if (!SyrSafeReadBlock(base, &dos, sizeof(dos))) return nullptr;
+  if (dos.e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+  auto* nt = (IMAGE_NT_HEADERS64*)(base + dos.e_lfanew);
+  uint32_t sig = 0;
+  if (!SyrSafeReadBlock((uintptr_t)nt, &sig, sizeof(sig))) return nullptr;
+  if (sig != IMAGE_NT_SIGNATURE) return nullptr;
+  return nt;
+}
+
+__declspec(dllexport) int SyrPeSections(uintptr_t base, syr::SectionInfo* out, int max_out) {
+  auto* nt = PeNt(base);
+  if (!nt || nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) return -1;
+  auto* sec = IMAGE_FIRST_SECTION(nt);
+  int n = nt->FileHeader.NumberOfSections;
+  if (n > max_out) n = max_out;
+  for (int i = 0; i < n; i++) {
+    memcpy(out[i].name, sec[i].Name, 8);
+    out[i].name[7] = 0;  // 段名非零结尾时截断保安全
+    for (int k = 0; k < 8; k++) if (out[i].name[k] == 0) break;
+    out[i].va = base + sec[i].VirtualAddress;
+    out[i].vsize = sec[i].Misc.VirtualSize;
+    out[i].exec = (sec[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) ? 1 : 0;
+    out[i].flags = sec[i].Characteristics;
+  }
+  return n;
+}
+
+static int ScanRangeSeh(const uint8_t* hay, size_t rsz,
+                        const std::pair<uint8_t, bool>* pat, size_t patn,
+                        uintptr_t* out, int max_out) {
+  int found = 0;
+  __try {
+    for (size_t i = 0; i + patn <= rsz && found < max_out; i++) {
+      size_t j = 0;
+      for (; j < patn; j++)
+        if (!pat[j].second && hay[i + j] != pat[j].first) break;
+      if (j == patn) out[found++] = (uintptr_t)(hay + i);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return found;
+}
+
+__declspec(dllexport) int SyrScanRange(uintptr_t start, uintptr_t end,
+                                       const char* pattern, uintptr_t* out, int max_out) {
+  if (!detail::g_init) SyrInit();
+  if (end <= start) return -2;
+  std::vector<std::pair<uint8_t, bool>> pat;
+  if (ParsePattern(pattern, pat) != 0) return -2;
+  return ScanRangeSeh((const uint8_t*)start, (size_t)(end - start),
+                      pat.data(), pat.size(), out, max_out);
+}
+
+__declspec(dllexport) uintptr_t SyrPeExport(uintptr_t base, const char* name) {
+  auto* nt = PeNt(base);
+  if (!nt) return 0;
+  DWORD dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+  DWORD dirs = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
+  if (!dir || !dirs) return 0;
+  auto* exp = (IMAGE_EXPORT_DIRECTORY*)(base + dir);
+  IMAGE_EXPORT_DIRECTORY e{};
+  if (!SyrSafeReadBlock((uintptr_t)exp, &e, sizeof(e))) return 0;
+  uint32_t nnames = e.NumberOfNames;
+  if (!nnames || !e.AddressOfNames || !e.AddressOfFunctions ||
+      !e.AddressOfNameOrdinals)
+    return 0;
+  auto* names = (const uint32_t*)(base + e.AddressOfNames);
+  auto* ords = (const uint16_t*)(base + e.AddressOfNameOrdinals);
+  auto* funcs = (const uint32_t*)(base + e.AddressOfFunctions);
+  for (DWORD i = 0; i < nnames; i++) {
+    uint32_t nrva = 0;
+    uint16_t o = 0;
+    if (!SyrSafeReadBlock((uintptr_t)(names + i), &nrva, 4)) break;
+    if (!SyrSafeReadBlock((uintptr_t)(ords + i), &o, 2)) break;
+    const char* fname = (const char*)(base + nrva);
+    bool eq = true;
+    for (int k = 0; k < 256; k++) {
+      char a = 0, b = name[k];
+      if (!SyrSafeReadBlock((uintptr_t)(fname + k), &a, 1)) { eq = false; break; }
+      if (a != b) { eq = false; break; }
+      if (a == 0) break;  // 同时为零 => 相等
+    }
+    if (!eq) continue;
+    uint32_t frva = 0;
+    if (!SyrSafeReadBlock((uintptr_t)(funcs + o), &frva, 4)) return 0;
+    // 转发导出: frva 落在 export 目录内 => 指向别处, 不解引用, 返回原 VA 供判断
+    return base + frva;
+  }
+  return 0;
+}
+
 static char g_hooks_info[4096];
 __declspec(dllexport) const char* SyrHooksInfo(void) {
   char* p = g_hooks_info;
@@ -388,6 +486,9 @@ static Api g_api_table = {
     SyrScanRwx,
     SyrCfgStatus,
     SyrCfgValidate,
+    SyrPeSections,
+    SyrPeExport,
+    SyrScanRange,
 };
 
 extern "C" __declspec(dllexport) const Api* SyrGetApi(void) { return &g_api_table; }

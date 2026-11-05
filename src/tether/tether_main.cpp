@@ -7,6 +7,9 @@
 //   write <hexaddr> <hexbytes>          自动走 RWX 写原语
 //   scan <modulename|*> "<pattern>"     例: scan * "48 89 5C 24 ?? 57"
 //   scanrwx "<pattern>"                 全进程私有可执行页扫描(定位 JIT 产物)
+//   pe <hexbase>                        段表(可执行块范围)
+//   export <hexbase> <name>             自解析导出表 -> 函数 VA
+//   scanrange <start> <end> "<pattern>" 地址区间扫描
 //   load <绝对路径.dll>                  LoadLibraryExW + 调 SyrPayloadInit
 //   hooks
 //   log
@@ -218,6 +221,50 @@ static DWORD WINAPI PipeServer(LPVOID) {
         for (int i = 0; i < nfound; i++) {
           _snprintf_s(buf, _TRUNCATE, "%016llx", (unsigned long long)out[i]);
           reply += buf; reply += "\n";
+        }
+        reply += ".";
+      } else if (!strcmp(cmd, "pe")) {
+        // pe <hexbase> —— 任意已加载 DLL 的段表(标记可执行块)
+        uintptr_t b = _strtoui64(arg1, nullptr, 16);
+        syr::SectionInfo secs[32] = {};
+        int nsec = SyrPeSections(b, secs, 32);
+        if (nsec < 0) { reply = "ERR pe\n."; goto send; }
+        char l[256];
+        for (int i = 0; i < nsec; i++) {
+          _snprintf_s(l, _TRUNCATE, "%-8s %016llx %08llx exec=%d\n",
+                      secs[i].name, (unsigned long long)secs[i].va,
+                      (unsigned long long)secs[i].vsize, secs[i].exec);
+          reply += l;
+        }
+        reply += ".";
+      } else if (!strcmp(cmd, "export")) {
+        // export <hexbase> <name> —— 自解析导出表(剥加载器/手动映射场景)
+        uintptr_t b = _strtoui64(arg1, nullptr, 16);
+        uintptr_t f = SyrPeExport(b, arg2);
+        char l[64];
+        _snprintf_s(l, _TRUNCATE, "%016llx\n.", (unsigned long long)f);
+        reply = l;
+      } else if (!strcmp(cmd, "scanrange")) {
+        // scanrange <start> <end> "<pattern>"
+        uintptr_t s = _strtoui64(arg1, nullptr, 16);
+        uintptr_t e = _strtoui64(arg2, nullptr, 16);
+        char patbuf[512] = "";
+        const char* q1 = strchr(line, '"');
+        if (q1) {
+          const char* q2 = strrchr(q1 + 1, '"');
+          size_t pl = q2 ? (size_t)(q2 - q1 - 1) : strlen(q1 + 1);
+          if (pl >= sizeof(patbuf)) pl = sizeof(patbuf) - 1;
+          memcpy(patbuf, q1 + 1, pl);
+          patbuf[pl] = 0;
+        }
+        if (!s || !e || !patbuf[0]) { reply = "ERR args\n."; goto send; }
+        uintptr_t out[64];
+        int nfound = SyrScanRange(s, e, patbuf, out, 64);
+        if (nfound < 0) { reply = "ERR scan\n."; goto send; }
+        char l[64];
+        for (int i = 0; i < nfound; i++) {
+          _snprintf_s(l, _TRUNCATE, "%016llx", (unsigned long long)out[i]);
+          reply += l; reply += "\n";
         }
         reply += ".";
       } else if (!strcmp(cmd, "alloc")) {
