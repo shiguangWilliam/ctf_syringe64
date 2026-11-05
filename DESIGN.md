@@ -180,15 +180,9 @@ uintptr_t ResolveRVA(const wchar_t* module, uint32_t rva);   // base + rva
 | M4 | 手动映射路径 + 卸载/还原 + 日志体系 | LoadLibrary 被监控的模拟用例通过 |
 | M5（后置） | C#/Unity 专项（§10）单独立项 | — |
 
-## 10. C#/Unity 专项（本期只占位，后续立项）
+## 10. C#/Unity 专项
 
-已知问题清单，v1 的架构已为其留口：
-
-- **Mono JIT**：托管方法地址在 JIT 编译前是 stub，直接钩 `jmp [rip+disp]` 预编码桩要等首次调用；需要 `Runtime.Invoke`/`mono_add_internal_call` 层面的方案或等 tiered compilation 稳定后重挂。
-- **IL2CPP**：方法已是 native（GameAssembly.dll 内），主流程可复用 v1 引擎；难点是 metadata→方法定位（`il2cpp_domain_get_assemblies` + `class_get_method_from_name` 驱动的符号化 RVA 查找服务，挂进 §5.4）。
-- **CFG + 托管调用约定**：delegate 调用点走 CFG 位图，detour 需 `SetProcessValidCallTargets` 或改用 patch 函数头策略（§6.6 预案）。
-- **GC/线程附着**：detour 回调进入托管运行时前需 `mono_thread_attach` / il2cpp 等价物，牵引提供每线程 attach 的辅助导出。
-- **CRT 差异**：Unity 发行版 CRT 常为动态且版本固定，payload 一律静态链接 CRT（`/MT`）避免拖带。
+已单独立项，完整设计见 [DESIGN-UNITY.md](DESIGN-UNITY.md)（后端探测、IL2CPP methodPointer 版本探测、Mono 编译钩 + IL 补丁模板、CRT 堆工具、CFG 对策与 `.syu64` 延迟安装队列）。
 
 ## 11. 仓库结构（规划）
 
