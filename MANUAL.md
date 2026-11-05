@@ -169,6 +169,10 @@ RVA 全 0 时安装自动跳过——可先做编译检查。
 | `ERR access`（read） | 地址不可读（SEH 拦截），检查模块基址是否过期（重扫 `modules`） |
 | 钩子 `ALREADY` | 同地址重复登记；`hooks` 查看 |
 | 目标崩溃于装钩后 | 用 `freeze` → 装钩 → `thaw`；确保钩在函数入口（非任意指令中间） |
+| `LOAD -1`（gle=126） | **实测(WCE)：部分游戏按“线程创建来源”拦截进程内 LdrLoadDll**——牵引内 LoadLibrary 全拒，但 launcher 的 `CreateRemoteThread` 畅通。对策：payload 用**自举模式**（见 `example/payload_wce_test.cpp`：DllMain 起线程，`GetModuleHandleW(L"syringe-tether.dll")` + `SyrGetApi` 取 Api 表自行初始化），由 `launcher64 --attach` 外部装载 |
+| 注入返回 NULL（路径正确） | 部分游戏只允许从**自身目录**加载 DLL（WCE 实测）：把 tether/payload 拷进游戏目录再注入 |
+| 重载同一 payload 无反应 | 模块已在进程内，DllMain 不会重触发；换文件名或重启目标 |
+| `scanrwx`/`scanrange` 空 | 起点可能落在未提交页（SEH 跳过）；mono JIT 序言与 MSVC 不同，先用 `read` 取目标真实字节再当特征 |
 
 ## 9. 架构与安全边界
 

@@ -35,6 +35,14 @@ static std::wstring ToWide(const char* s) {
   return w;
 }
 
+// 远程 LoadLibraryW 在目标进程的 CWD 里解析相对路径 => 一律转成本机绝对路径。
+static std::wstring ToAbsWide(const char* s) {
+  wchar_t w[1024], abs[1050];
+  MultiByteToWideChar(CP_UTF8, 0, s, -1, w, 1024);
+  if (_wfullpath(abs, w, 1050)) return abs;
+  return w;
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) {
     fprintf(stderr,
@@ -47,16 +55,16 @@ int main(int argc, char** argv) {
     DWORD pid = (DWORD)strtoul(argv[2], nullptr, 0);
     HANDLE proc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
     if (!proc) { fprintf(stderr, "OpenProcess(%lu) failed gle=%lu\n", pid, GetLastError()); return 1; }
-    int r = InjectDll(proc, ToWide(argv[3]));
+    int r = InjectDll(proc, ToAbsWide(argv[3]));
     CloseHandle(proc);
     return r;
   }
   if (!strcmp(argv[1], "--create")) {
     std::wstring exe = ToWide(argv[2]);
     std::wstring cmd = L"\"" + exe + L"\"";
-    std::wstring dll;
+    std::string dll;
     for (int i = 3; i < argc; i++) {
-      if (!strcmp(argv[i], "--")) { dll = ToWide(argv[i + 1]); break; }
+      if (!strcmp(argv[i], "--")) { dll = argv[i + 1]; break; }
       cmd += L" ";
       cmd += ToWide(argv[i]);
     }
@@ -69,7 +77,7 @@ int main(int argc, char** argv) {
       fprintf(stderr, "CreateProcessW failed gle=%lu\n", GetLastError());
       return 1;
     }
-    int r = InjectDll(pi.hProcess, dll);
+    int r = InjectDll(pi.hProcess, ToAbsWide(dll.c_str()));
     ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);

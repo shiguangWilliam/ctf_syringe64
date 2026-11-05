@@ -38,7 +38,25 @@ static void tlog(const char* fmt, ...) {
 
 // ---- payload 追加 -----------------------------------------------------------
 static int LoadPayload(const std::wstring& path) {
-  HMODULE h = LoadLibraryExW(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+  // 实测(WCE): 该游戏只放行"线程起始地址=LoadLibraryW"的加载(远程线程可,
+  // 管道线程内直调被 126 拒) => 用本地 CreateThread 复刻远程注入路径。
+  HMODULE h = nullptr;
+  {
+    std::wstring* pcopy = new std::wstring(path);
+    auto load = (LPTHREAD_START_ROUTINE)(uintptr_t)GetProcAddress(
+        GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
+    HANDLE t = CreateThread(nullptr, 0, load, (LPVOID)pcopy->c_str(), 0, nullptr);
+    if (t) {
+      WaitForSingleObject(t, 10000);
+      DWORD code = 0;
+      GetExitCodeThread(t, &code);
+      CloseHandle(t);
+      // 线程退出码是 32 位, 装不下 64 位模块句柄 => 只当"加载成功与否",
+      // 真实句柄用 GetModuleHandleW 取。
+      h = code ? GetModuleHandleW(path.c_str()) : nullptr;
+    }
+    delete pcopy;
+  }
   if (!h) { tlog("tether: LoadLibraryExW failed gle=%lu", GetLastError()); return -1; }
   auto init = (int(__cdecl*)(const syr::Api*))GetProcAddress(h, "SyrPayloadInit");
   if (!init) { tlog("tether: %ls loaded (no SyrPayloadInit export)", path.c_str()); return 0; }
@@ -137,7 +155,14 @@ static std::string HandleCommand(const char* line) {
       if (pl >= sizeof(patbuf)) pl = sizeof(patbuf) - 1;
       memcpy(patbuf, q1 + 1, pl);
       patbuf[pl] = 0;
+    } else if (arg2[0]) {
+      // 无引号回退: 客户端把含空格的模式拆参重组后, 取 arg2 起的整段
+      const char* p2 = strstr(line, arg2);
+      if (p2) _snprintf_s(patbuf, _TRUNCATE, "%s", p2);
     }
+    for (char* p = patbuf; *p; p++) { if (*p=='\n'||*p=='\r') *p=0; }
+    size_t plen = strlen(patbuf);
+    while (plen && (patbuf[plen-1]==' '||patbuf[plen-1]=='\t')) patbuf[--plen] = 0;
     if (!patbuf[0]) { reply = "ERR args\n."; return reply; }
     uintptr_t out[64];
     int nfound = -1;
