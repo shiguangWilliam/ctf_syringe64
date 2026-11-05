@@ -72,40 +72,40 @@ cfg bitmap_set documented result       got=1 want=1 OK
 
 SELFTEST PASS (hooks=3)
 build + selftest OK
-puppet: ALT=00007FF631A41010 FLOW=00007FF631A41020 BASE=00007FF631A40000 SECRET=00007FF631A41030 PID=57980 ADD=00007FF631A41000
+puppet: ALT=00007FF68EFC1010 FLOW=00007FF68EFC1020 BASE=00007FF68EFC0000 SECRET=00007FF68EFC1030 PID=55236 ADD=00007FF68EFC1000
 rvas: add=+1000 secret=+1030 flow=+1020
-inject OK (remote hmodule=0000000040270000)
-syringe64 tether v6 pid=57980 bits=64 web=http://127.0.0.1:18824
-.web ui OK on :18824
+inject OK (remote hmodule=00000000967E0000)
+syringe64 tether v6 pid=55236 bits=64 web=http://127.0.0.1:18896
+.web ui OK on :18896
 payload_example.cpp
   正在创建库 D:\weapon\ctf-syringe64\build\e2e_payload.lib 和对象 D:\weapon\ctf-syringe64\build\e2e_payload.exp
 LOAD 3
-.00007FF631A41000 D_PuppetAdd
-00007FF631A41030 D_PuppetSecret
-00007FF631A41020 D_PuppetFlow
+.00007FF68EFC1000 D_PuppetAdd
+00007FF68EFC1030 D_PuppetSecret
+00007FF68EFC1020 D_PuppetFlow
 
 .syr: core ready (ver 6, engine=MinHook)
-tether: attached pid=57980
-tether: web ui at http://127.0.0.1:18824
-hook addr=00007FF631A41000 name=D_PuppetAdd OK tramp=00007FF631A30FC0
-hook addr=00007FF631A41030 name=D_PuppetSecret OK tramp=0000000000000000
-hook addr=00007FF631A41020 name=D_PuppetFlow OK tramp=0000000000000000
-section: 3 hook(s) installed for module 00007FFE72700000
+tether: attached pid=55236
+tether: web ui bind failed (port 18896 in use?)
+hook addr=00007FF68EFC1000 name=D_PuppetAdd OK tramp=00007FF68EFB0FC0
+hook addr=00007FF68EFC1030 name=D_PuppetSecret OK tramp=0000000000000000
+hook addr=00007FF68EFC1020 name=D_PuppetFlow OK tramp=0000000000000000
+section: 3 hook(s) installed for module 00007FFE37320000
 tether: payload D:\weapon\ctf-syringe64\build\e2e_payload.dll init -> 3
 .add 1 2 -> add=103 (want 103)
 secret 1 -> secret=1337 (want 1337)
 flow 5 -> flow=2468 (want 2468)
-alloc -> 000002881f2c0000
+alloc -> 00000143f0410000
 read back -> DEADBEEF (want DEADBEEF)
 payload_second.cpp
   正在创建库 D:\weapon\ctf-syringe64\build\e2e_payload2.lib 和对象 D:\weapon\ctf-syringe64\build\e2e_payload2.exp
 second payload hot-load OK (injector untouched)
-FROZEN 4
-.THAWED 4
+FROZEN 3
+.THAWED 3
 .e2e PASS
 e2e OK
-create smoke: puppet pid=14956
-syringe64 tether v6 pid=14956 bits=64 web=http://127.0.0.1:18808
+create smoke: puppet pid=61796
+syringe64 tether v6 pid=61796 bits=64 web=http://127.0.0.1:18800
 .Invoke-WebRequest : 无法连接到远程服务器
 所在位置 D:\weapon\ctf-syringe64\test\e2e_create.ps1:30 字符: 12
 +   $resp = (Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$port ...

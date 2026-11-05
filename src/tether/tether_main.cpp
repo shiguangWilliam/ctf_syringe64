@@ -57,7 +57,7 @@ static int LoadPayload(const std::wstring& path) {
     }
     delete pcopy;
   }
-  if (!h) { tlog("tether: LoadLibraryExW failed gle=%lu", GetLastError()); return -1; }
+  if (!h) { tlog("tether: load payload failed gle=%lu", GetLastError()); return -1; }
   auto init = (int(__cdecl*)(const syr::Api*))GetProcAddress(h, "SyrPayloadInit");
   if (!init) { tlog("tether: %ls loaded (no SyrPayloadInit export)", path.c_str()); return 0; }
   int r = init(SyrGetApi());
