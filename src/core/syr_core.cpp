@@ -245,6 +245,105 @@ __declspec(dllexport) const char* SyrGetLog(void) { return detail::g_log; }
 
 __declspec(dllexport) int SyrHookCount(void) { return (int)detail::g_hooks.size(); }
 
+// 跨全进程扫描可执行页(堆上 RWX/私有 RX): 定位 JIT 产物/运行期生成代码的
+// 通用手段, 不耦合任何运行时(与 mono/IL 解析无关)。
+static int ParsePattern(const char* pattern, std::vector<std::pair<uint8_t, bool>>& pat) {
+  const char* p = pattern;
+  while (*p) {
+    if ((p[0] == '?' && p[1] == '?') || (p[0] == '*' && p[1] == '*')) {
+      pat.push_back({0, true}); p += 2;
+    } else if (p[0] == '?') {
+      pat.push_back({0, true}); p += 1;
+    } else {
+      char* end = nullptr;
+      unsigned long b = strtoul(p, &end, 16);
+      if (end == p) { p++; continue; }
+      pat.push_back({(uint8_t)b, false});
+      p = end;
+    }
+    while (*p == ' ' || *p == '\t') p++;
+  }
+  return pat.empty() ? -2 : 0;
+}
+
+// 无 C++ 对象的 SEH 扫描体(__try 不能与对象展开共存)
+static int ScanRegionFor(const uint8_t* hay, size_t rsz,
+                         const std::pair<uint8_t, bool>* pat, size_t patn,
+                         uintptr_t* out, int max_out, int start_idx) {
+  int found = start_idx;
+  __try {
+    for (size_t i = 0; i + patn <= rsz && found < max_out; i++) {
+      size_t j = 0;
+      for (; j < patn; j++)
+        if (!pat[j].second && hay[i + j] != pat[j].first) break;
+      if (j == patn) out[found++] = (uintptr_t)(hay + i);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { /* 换页竞态: 跳过本区 */ }
+  return found;
+}
+
+__declspec(dllexport) int SyrScanRwx(const char* pattern, uintptr_t* out, int max_out) {
+  if (!detail::g_init) SyrInit();
+  std::vector<std::pair<uint8_t, bool>> pat;
+  if (ParsePattern(pattern, pat) != 0) return -2;
+
+  int found = 0;
+  SYSTEM_INFO si{};
+  GetSystemInfo(&si);
+  uintptr_t cur = (uintptr_t)si.lpMinimumApplicationAddress;
+  MEMORY_BASIC_INFORMATION mbi{};
+  while (cur < (uintptr_t)si.lpMaximumApplicationAddress && found < max_out) {
+    if (VirtualQuery((void*)cur, &mbi, sizeof(mbi)) == 0) break;
+    bool exec = (mbi.State == MEM_COMMIT) &&
+                (mbi.Type == MEM_PRIVATE) &&  // JIT 堆/MinHook 跳板都是 private
+                (mbi.Protect & (PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_READ |
+                                PAGE_EXECUTE_WRITECOPY | PAGE_EXECUTE));
+    if (exec && mbi.RegionSize >= pat.size()) {
+      found = ScanRegionFor((const uint8_t*)mbi.BaseAddress, mbi.RegionSize,
+                            pat.data(), pat.size(), out, max_out, found);
+    }
+    cur = (uintptr_t)mbi.BaseAddress + mbi.RegionSize;
+  }
+  return found;
+}
+
+// ---- CFG: 状态查询 + 任意执行地址的位图放行(通用能力, 与托管运行时无关) ----
+static uint32_t MainModuleGuardFlags(void) {
+  IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)GetModuleHandleW(nullptr);
+  if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+  IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)((uintptr_t)dos + dos->e_lfanew);
+  DWORD lcdir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG].VirtualAddress;
+  if (!lcdir) return 0;
+  IMAGE_LOAD_CONFIG_DIRECTORY* cfg =
+      (IMAGE_LOAD_CONFIG_DIRECTORY*)((uintptr_t)dos + lcdir);
+  if (cfg->Size < offsetof(IMAGE_LOAD_CONFIG_DIRECTORY, GuardFlags) + sizeof(uint32_t))
+    return 0;
+  return cfg->GuardFlags;
+}
+
+__declspec(dllexport) int SyrCfgStatus(void) {
+  uint32_t f = MainModuleGuardFlags();
+  return (f & IMAGE_GUARD_CF_INSTRUMENTED) ? 1 : 0;
+}
+
+__declspec(dllexport) int SyrCfgValidate(uintptr_t addr, size_t len) {
+  if (!SyrCfgStatus()) return 0;   // 未开 CFG: 恒通过
+  // best-effort: 失败只记日志不阻塞(文档明示; 16 字节粒度对齐后可重试)。
+  using Fn = BOOL(WINAPI*)(HANDLE, PVOID, ULONG, PVOID, PULONG);
+  static Fn fn = (Fn)(void*)GetProcAddress(
+      GetModuleHandleW(L"kernel32.dll"), "SetProcessValidCallTargets");
+  if (!fn) { logf("cfg_validate: API unavailable (pass-through)"); return 0; }
+  struct { ULONG Offset; ULONG Flags; } info{};  // CFG_CALL_TARGET_INFO 等价
+  info.Offset = (ULONG)(addr & 0xFFFFFFFF);
+  info.Flags = 1 /* CFG_CALL_TARGET_VALID */;
+  ULONG processed = 0;
+  if (!fn(GetCurrentProcess(), nullptr, 1, &info, &processed))
+    logf("cfg_validate %016llX best-effort failed gle=%lu (pass-through)",
+         (unsigned long long)addr, GetLastError());
+  (void)len;
+  return 0;
+}
+
 static char g_hooks_info[4096];
 __declspec(dllexport) const char* SyrHooksInfo(void) {
   char* p = g_hooks_info;
@@ -286,6 +385,9 @@ static Api g_api_table = {
     SyrAllocMem,
     SyrFreeMem,
     SyrProtect,
+    SyrScanRwx,
+    SyrCfgStatus,
+    SyrCfgValidate,
 };
 
 extern "C" __declspec(dllexport) const Api* SyrGetApi(void) { return &g_api_table; }

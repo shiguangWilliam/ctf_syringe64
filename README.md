@@ -77,8 +77,10 @@ SYR_PAYLOAD()   // 每个 payload 写一次; 牵引 load 时自动安装全部�
 | 内存读写 | `SYR_MEM_WRITE` / `SYR_MEM_READ`（SEH 安全读，野指针不崩） |
 | 内存分配/释放 | `SYR_ALLOC(size, exec)` / `SYR_FREE`（RWX 或 RW 页） |
 | 页保护修改 | `SYR_PROTECT(addr, len, PAGE_...)` 返回旧保护 |
-| 特征码定位 | `g_api->scan(L"module", "48 8B ??", out, n)` |
-| 特征码定位 | `g_api->scan(L"module", "48 8B ??", out, n)` |
+| 特征码定位 | `g_api->scan(L"module", "48 8B ??", out, n)`；**全进程堆上 RWX 扫描** `g_api->scan_rwx(...)`（定位 JIT 产物/运行期生成代码，） |
+| CFG | `g_api->cfg_status()/cfg_validate(addr,len)`（未开 CFG 时恒通过，best-effort） |
+| 特征码定位 | `g_api->scan(L"module", "48 8B ??", out, n)`；**全进程堆上 RWX 扫描** `g_api->scan_rwx(...)`（定位 JIT 产物/运行期生成代码，） |
+| CFG | `g_api->cfg_status()/cfg_validate(addr,len)`（未开 CFG 时恒通过，best-effort） |
 | 日志 | `g_api->log("hit a=%lld", a)` → `syrctl <pid> log` 查看 |
 
 编译：`cl /LD /O2 /std:c++17 /Iinclude payload.cpp`（建议 `/MT` 静态 CRT）。

@@ -6,6 +6,7 @@
 //   read <hexaddr> <len>
 //   write <hexaddr> <hexbytes>          自动走 RWX 写原语
 //   scan <modulename|*> "<pattern>"     例: scan * "48 89 5C 24 ?? 57"
+//   scanrwx "<pattern>"                 全进程私有可执行页扫描(定位 JIT 产物)
 //   load <绝对路径.dll>                  LoadLibraryExW + 调 SyrPayloadInit
 //   hooks
 //   log
@@ -198,6 +199,27 @@ static DWORD WINAPI PipeServer(LPVOID) {
         char buf[64];
         _snprintf_s(buf, _TRUNCATE, "THAWED %d\n.", n);
         reply = buf;
+      } else if (!strcmp(cmd, "scanrwx")) {
+        // 跨全进程私有可执行页扫描: 定位 JIT 产物/运行期生成代码
+        char patbuf[512] = "";
+        const char* q1 = strchr(line, '"');
+        if (q1) {
+          const char* q2 = strrchr(q1 + 1, '"');
+          size_t pl = q2 ? (size_t)(q2 - q1 - 1) : strlen(q1 + 1);
+          if (pl >= sizeof(patbuf)) pl = sizeof(patbuf) - 1;
+          memcpy(patbuf, q1 + 1, pl);
+          patbuf[pl] = 0;
+        }
+        if (!patbuf[0]) { reply = "ERR args\n."; goto send; }
+        uintptr_t out[64];
+        int nfound = SyrScanRwx(patbuf, out, 64);
+        if (nfound < 0) { reply = "ERR scan\n."; goto send; }
+        char buf[64];
+        for (int i = 0; i < nfound; i++) {
+          _snprintf_s(buf, _TRUNCATE, "%016llx", (unsigned long long)out[i]);
+          reply += buf; reply += "\n";
+        }
+        reply += ".";
       } else if (!strcmp(cmd, "alloc")) {
         size_t sz = (size_t)_strtoui64(arg1, nullptr, 0);
         int exec = atoi(arg2);

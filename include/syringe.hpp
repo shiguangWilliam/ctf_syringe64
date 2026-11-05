@@ -36,7 +36,7 @@
 // Api 版本契约: payload 编译时锁定的最低版本。牵引注入的表 version < 该值时
 // SyrPayloadInit 返回 -100 拒绝加载 —— 保证「注入器一次编译, 后续 DLL 只要
 // 满足本头文件的宏约定即可注入」, 不兼容时给出明确错误而非行为未定义。
-#define SYR_VERSION 3
+#define SYR_VERSION 4
 #define SYR_API_MIN 3
 
 namespace syr {
@@ -68,6 +68,12 @@ struct Api {
   void           (*free_mem)(std::uintptr_t addr);
   // 双向保护修改: 返回旧保护属性, 失败返回 0
   std::uint32_t  (*protect)(std::uintptr_t addr, std::size_t len, std::uint32_t new_prot);
+  // --- v4 追加(通用 RWX/JIT 面, 不耦合 mono/IL) ---
+  // 跨全进程扫描私有可执行页(堆上 RWX): 定位 JIT 产物/运行期生成代码
+  int            (*scan_rwx)(const char* pattern, std::uintptr_t* out, int max_out);
+  // CFG: 1=主模块开启 CF_INSTRUMENTED; validate 把地址加入合法间接调用位图
+  int            (*cfg_status)(void);
+  int            (*cfg_validate)(std::uintptr_t addr, std::size_t len);
 };
 
 // payload 内全局 API 指针, SYR_PAYLOAD() 负责填充。

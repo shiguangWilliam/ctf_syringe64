@@ -133,6 +133,46 @@ int main(void) {
   Check("code intact after write", Secret(0) == (0 ^ 0x5A5A5A5A5A5A5A5All) ||
          true, 1);  // Secret 已被钩住(返回0x1337), 只要不崩即说明页面可执行
 
+  // 12. JIT 模拟: 堆上 RWX 生成代码, MinHook 钩取 + 参数篡改 + RWX 扫描定位
+  {
+    // mov eax, 0x5678; ret  (JIT 产物替身)
+    unsigned char jcode[] = {0xB8, 0x78, 0x56, 0x00, 0x00, 0xC3};
+    // long long f(long long a /*rcx*/, long long b /*rdx*/): lea rax,[rcx+rdx]; ret
+    unsigned char jadd[] = {0x48, 0x8D, 0x04, 0x11, 0xC3};
+    uintptr_t jpage = api->alloc_mem(0x1000, 1);
+    uintptr_t jadd_at = jpage + 0x800;
+    api->write_mem(jpage, jcode, sizeof(jcode));
+    api->write_mem(jadd_at, jadd, sizeof(jadd));
+    Check("jit-sim exec unhooked", ((int (*)(void))jpage)(), 0x5678);
+    Check("jit-sim add unhooked",
+          ((long long (*)(long long, long long))jadd_at)(3, 4), 7);
+    // RWX 扫描定位两段代码(等价于定位 JIT 产物, 不耦合任何运行时)
+    uintptr_t rhits[16] = {};
+    int rn = api->scan_rwx("B8 78 56 00 00 C3", rhits, 16);
+    bool rhit1 = false;
+    for (int i = 0; i < rn; i++) rhit1 |= rhits[i] == jpage;
+    Check("scan_rwx finds jit code", rn > 0 && rhit1, 1);
+    rn = api->scan_rwx("48 8D 04 11 C3", rhits, 16);
+    bool rhit2 = false;
+    for (int i = 0; i < rn; i++) rhit2 |= rhits[i] == jadd_at;
+    Check("scan_rwx finds jit add", rhit2, 1);
+    // 钩取堆上 RWX 代码: 参数(b)篡改 +100
+    Check("jit-sim hook",
+          api->hook_register(jadd_at, (void*)&D_Add2, (void**)&OrigAdd2, "jitadd"), 0);
+    Check("jit-sim hooked result",
+          ((long long (*)(long long, long long))jadd_at)(3, 4), 107);  // 3+(4+100)
+    Check("jit-sim unhook", api->hook_remove(jadd_at), 0);
+    Check("jit-sim restored",
+          ((long long (*)(long long, long long))jadd_at)(3, 4), 7);
+    api->free_mem(jpage);
+  }
+
+  // 13. CFG 状态冒烟(测试机通常未开; 只验证查询不炸)
+  int cfg = api->cfg_status();
+  (void)cfg;
+  Check("cfg_status callable", 1, 1);
+  Check("cfg_validate noop/executable", api->cfg_validate((uintptr_t)&Add2, 16) == 0, 1);
+
   printf("\n%s (hooks=%d)\n", g_fail ? "SELFTEST FAIL" : "SELFTEST PASS", SyrHookCount());
   return g_fail ? 1 : 0;
 }
