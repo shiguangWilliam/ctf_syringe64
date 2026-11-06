@@ -1,6 +1,5 @@
-# build / vendor
+﻿# build artifacts
 build/
-vendor/minhook/
 *.user
 *.obj
 *.pdb
@@ -11,6 +10,7 @@ payloads/
 target/
 
 # root scratch / one-off scripts (not syringe)
+AGENT-MANUAL.md
 build_out.txt
 pl.txt
 fixpath.py
