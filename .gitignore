@@ -1,4 +1,4 @@
-﻿# build artifacts
+# build artifacts
 build/
 *.user
 *.obj
