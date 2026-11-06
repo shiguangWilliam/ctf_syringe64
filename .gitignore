@@ -1,3 +1,20 @@
+# build / vendor
 build/
 vendor/minhook/
 *.user
+*.obj
+*.pdb
+
+# CTF / game work — not part of syringe itself
+audit/
+payloads/
+target/
+
+# root scratch / one-off scripts (not syringe)
+AGENT-MANUAL.md
+build_out.txt
+pl.txt
+fixpath.py
+mkv*.py
+click_start.ps1
+focus_key.ps1
